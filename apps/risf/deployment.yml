@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-risf
+  labels:
+    app: nginx-risf
+spec:
+  replicas: 2 # It's fine for this test but HPA for real prod workload + PodDisruptionBudget
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 50%
+      maxUnavailable: 50%
+  selector:
+    matchLabels:
+      app: nginx-risf
+  template:
+    metadata:
+      labels:
+        app: nginx-risf
+    spec:
+      securityContext:
+        runAsNonRoot: true # Must be enforced by cluster-wide policies (with Open Policy Agent for example)
+        runAsUser: 101 # nginx user ID
+        runAsGroup: 101
+        fsGroup: 101
+      containers:
+      - name: nginx
+        image: hello-risf:1.0.0
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+          - name: nginx-tmp
+            mountPath: /tmp
+        resources: 
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        securityContext: # This securityContext (set at container level) must be enforced by cluster-wide policies (with Open Policy Agent for example)
+          allowPrivilegeEscalation: false # Do not allow the container to gain more privileges than its parent process
+          readOnlyRootFilesystem: true # Hence the inMemory medium for /tmp
+          capabilities:
+            drop:
+              - ALL
+      volumes:
+      - name: nginx-tmp
+        emptyDir:
+          medium: Memory
+          sizeLimit: 124Mi

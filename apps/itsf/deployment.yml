@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-itsf
+  labels:
+    app: nginx-itsf
+spec:
+  replicas: 2 # It's fine for this test but HPA for real prod workload
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 50%
+      maxUnavailable: 50%  
+  selector:
+    matchLabels:
+      app: nginx-itsf
+  template:
+    metadata:
+      labels:
+        app: nginx-itsf
+    spec:
+      securityContext:
+        runAsNonRoot: true # Must be enforced by cluster-wide policies (with Open Policy Agent for example)
+        runAsUser: 101 # nginx user ID
+        runAsGroup: 101
+        fsGroup: 101
+      containers:
+      - name: nginx
+        image: nginxinc/nginx-unprivileged:1.27.4 # Official rootless image
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+          - name: www-files
+            mountPath: /usr/share/nginx/html
+          - name: nginx-conf
+            mountPath: /etc/nginx/nginx.conf
+            subPath: nginx.conf
+          - name: nginx-etc
+            mountPath: /etc/nginx            
+          - name: nginx-tmp
+            mountPath: /tmp
+        resources: 
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        securityContext: # This securityContext (set at container level) must be enforced by cluster-wide policies (with Open Policy Agent for example).
+          allowPrivilegeEscalation: false # Do not allow the container to gain more privileges than its parent process
+          readOnlyRootFilesystem: true # Hence the Memory medium for /tmp
+          capabilities:
+            drop:
+              - ALL
+      volumes:
+      - name: www-files
+        persistentVolumeClaim:
+          claimName: pvc-nginx-itsf
+      - name: nginx-conf
+        configMap:
+          name: nginx-config
+      - name: nginx-tmp
+        emptyDir:
+          medium: Memory
+          sizeLimit: 124Mi
+      - name: nginx-etc
+        emptyDir:
+          medium: Memory
+          sizeLimit: 64Mi
